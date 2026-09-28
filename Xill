@@ -1,0 +1,713 @@
+-- =========================================================================
+-- ROBLOX 20TH FINALE PUZZLE SOLVER + MODERN PROGRESS UI
+-- =========================================================================
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Hapus UI lama jika ada yang masih terbuka
+local OldGui = LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("PuzzleSolverGui")
+if OldGui then OldGui:Destroy() end
+
+-- =========================================================================
+-- 1. PEMBUATAN INTERFACE (GUI)
+-- =========================================================================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "PuzzleSolverGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Coba pasang di CoreGui jika executor mendukung, atau fallback ke PlayerGui
+local guiParent = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+pcall(function()
+    if gethui then
+        guiParent = gethui()
+    elseif syn and syn.protect_gui then
+        syn.protect_gui(ScreenGui)
+        guiParent = game:GetService("CoreGui")
+    end
+end)
+ScreenGui.Parent = guiParent
+
+-- Frame Utama
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 360, 0, 240)
+MainFrame.Position = UDim2.new(0.5, -180, 0.2, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(24, 26, 32)
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(45, 52, 70)
+MainStroke.Thickness = 1.5
+MainStroke.Parent = MainFrame
+
+-- Fitur Drag (Bisa Digeser)
+local dragging, dragInput, dragStart, startPos
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+MainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Header Bar
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 42)
+Header.BackgroundColor3 = Color3.fromRGB(30, 34, 45)
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Text = "Roblox 20th Finale Solver"
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 15
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Position = UDim2.new(0, 14, 0, 0)
+TitleLabel.Size = UDim2.new(1, -60, 1, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Parent = Header
+
+-- Tombol Close
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position = UDim2.new(1, -35, 0.5, -14)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(40, 44, 55)
+CloseBtn.Text = "X"
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 13
+CloseBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = Header
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseBtn
+
+-- Status Badge
+local StatusBadge = Instance.new("TextLabel")
+StatusBadge.Size = UDim2.new(0, 80, 0, 20)
+StatusBadge.Position = UDim2.new(1, -125, 0.5, -10)
+StatusBadge.BackgroundColor3 = Color3.fromRGB(45, 52, 68)
+StatusBadge.Text = "IDLE"
+StatusBadge.Font = Enum.Font.GothamBold
+StatusBadge.TextSize = 11
+StatusBadge.TextColor3 = Color3.fromRGB(160, 175, 205)
+StatusBadge.BorderSizePixel = 0
+StatusBadge.Parent = Header
+
+local BadgeCorner = Instance.new("UICorner")
+BadgeCorner.CornerRadius = UDim.new(0, 5)
+BadgeCorner.Parent = StatusBadge
+
+-- Container Informasi
+local InfoContainer = Instance.new("Frame")
+InfoContainer.Size = UDim2.new(1, -28, 0, 70)
+InfoContainer.Position = UDim2.new(0, 14, 0, 52)
+InfoContainer.BackgroundTransparency = 1
+InfoContainer.Parent = MainFrame
+
+local PhaseLabel = Instance.new("TextLabel")
+PhaseLabel.Text = "Tahap: Menunggu..."
+PhaseLabel.Font = Enum.Font.GothamMedium
+PhaseLabel.TextSize = 13
+PhaseLabel.TextColor3 = Color3.fromRGB(120, 210, 255)
+PhaseLabel.TextXAlignment = Enum.TextXAlignment.Left
+PhaseLabel.Size = UDim2.new(1, 0, 0, 20)
+PhaseLabel.BackgroundTransparency = 1
+PhaseLabel.Parent = InfoContainer
+
+local MovesLabel = Instance.new("TextLabel")
+MovesLabel.Text = "Langkah: 0 / 0 (0%)"
+MovesLabel.Font = Enum.Font.Gotham
+MovesLabel.TextSize = 12
+MovesLabel.TextColor3 = Color3.fromRGB(200, 205, 220)
+MovesLabel.TextXAlignment = Enum.TextXAlignment.Left
+MovesLabel.Position = UDim2.new(0, 0, 0, 24)
+MovesLabel.Size = UDim2.new(0.6, 0, 0, 18)
+MovesLabel.BackgroundTransparency = 1
+MovesLabel.Parent = InfoContainer
+
+local TimeLabel = Instance.new("TextLabel")
+TimeLabel.Text = "Waktu: 00:00"
+TimeLabel.Font = Enum.Font.Gotham
+TimeLabel.TextSize = 12
+TimeLabel.TextColor3 = Color3.fromRGB(200, 205, 220)
+TimeLabel.TextXAlignment = Enum.TextXAlignment.Right
+TimeLabel.Position = UDim2.new(0.6, 0, 0, 24)
+TimeLabel.Size = UDim2.new(0.4, 0, 0, 18)
+TimeLabel.BackgroundTransparency = 1
+TimeLabel.Parent = InfoContainer
+
+-- Background Progress Bar
+local ProgressBg = Instance.new("Frame")
+ProgressBg.Size = UDim2.new(1, 0, 0, 12)
+ProgressBg.Position = UDim2.new(0, 0, 0, 48)
+ProgressBg.BackgroundColor3 = Color3.fromRGB(38, 42, 54)
+ProgressBg.BorderSizePixel = 0
+ProgressBg.Parent = InfoContainer
+
+local ProgressCorner = Instance.new("UICorner")
+ProgressCorner.CornerRadius = UDim.new(0, 6)
+ProgressCorner.Parent = ProgressBg
+
+-- Fill Progress Bar (dengan Gradient)
+local ProgressFill = Instance.new("Frame")
+ProgressFill.Size = UDim2.new(0, 0, 1, 0)
+ProgressFill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+ProgressFill.BorderSizePixel = 0
+ProgressFill.Parent = ProgressBg
+
+local FillCorner = Instance.new("UICorner")
+FillCorner.CornerRadius = UDim.new(0, 6)
+FillCorner.Parent = ProgressFill
+
+local FillGradient = Instance.new("UIGradient")
+FillGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 255, 140))
+})
+FillGradient.Parent = ProgressFill
+
+-- Log Text Status
+local DetailLabel = Instance.new("TextLabel")
+DetailLabel.Text = "Siap untuk menyelesaikan puzzle."
+DetailLabel.Font = Enum.Font.Gotham
+DetailLabel.TextSize = 11
+DetailLabel.TextColor3 = Color3.fromRGB(140, 145, 160)
+DetailLabel.TextXAlignment = Enum.TextXAlignment.Left
+DetailLabel.Position = UDim2.new(0, 14, 0, 130)
+DetailLabel.Size = UDim2.new(1, -28, 0, 20)
+DetailLabel.BackgroundTransparency = 1
+DetailLabel.Parent = MainFrame
+
+-- Tombol Action (Start & Stop)
+local StartBtn = Instance.new("TextButton")
+StartBtn.Size = UDim2.new(1, -28, 0, 38)
+StartBtn.Position = UDim2.new(0, 14, 1, -52)
+StartBtn.BackgroundColor3 = Color3.fromRGB(0, 130, 255)
+StartBtn.Text = "Mulai Selesaikan"
+StartBtn.Font = Enum.Font.GothamBold
+StartBtn.TextSize = 14
+StartBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+StartBtn.BorderSizePixel = 0
+StartBtn.Parent = MainFrame
+
+local BtnCorner = Instance.new("UICorner")
+BtnCorner.CornerRadius = UDim.new(0, 8)
+BtnCorner.Parent = StartBtn
+
+-- =========================================================================
+-- 2. ALGORITMA PENYELESAIAN PUZZLE
+-- =========================================================================
+
+local isRunning = false
+local shouldStop = false
+
+local DIRS = {
+    [1] = {0, -1}, -- UP
+    [2] = {-1, 0}, -- LEFT
+    [3] = {0, 1},  -- DOWN
+    [4] = {1, 0}   -- RIGHT
+}
+
+local function get_target_val(x, y, height)
+    return (x - 1) * height + y
+end
+
+local function solve_puzzle(initial_board, width, height, updatePhaseCallback)
+    local board = {}
+    for y = 1, height do
+        board[y] = {}
+        for x = 1, width do
+            board[y][x] = initial_board[y][x]
+        end
+    end
+    
+    local blank_val = width * height
+    local bx, by
+    for y = 1, height do
+        for x = 1, width do
+            if board[y][x] == blank_val then
+                bx, by = x, y
+                break
+            end
+        end
+    end
+    
+    local moves = {}
+    local locked = {}
+
+    local function is_locked(x, y) return locked[x .. "," .. y] == true end
+    local function lock(x, y) locked[x .. "," .. y] = true end
+
+    local function do_move(d)
+        local dir = DIRS[d]
+        local nx, ny = bx + dir[1], by + dir[2]
+        table.insert(moves, {d, bx, by})
+        board[by][bx] = board[ny][nx]
+        board[ny][nx] = blank_val
+        bx, by = nx, ny
+    end
+
+    local function find_tile(val)
+        for y = 1, height do
+            for x = 1, width do
+                if board[y][x] == val then return x, y end
+            end
+        end
+        error("Tile tidak ditemukan: " .. tostring(val))
+    end
+
+    local function move_tile_to(val, target_tx, target_ty, forbidden_extra)
+        forbidden_extra = forbidden_extra or {}
+        local start_tx, start_ty = find_tile(val)
+        if start_tx == target_tx and start_ty == target_ty then return end
+
+        local function encode(tx, ty, b_x, b_y)
+            return tx + ty * 10 + b_x * 100 + b_y * 1000
+        end
+
+        local start_code = encode(start_tx, start_ty, bx, by)
+        local queue = {{tx = start_tx, ty = start_ty, bx = bx, by = by, path = {}}}
+        local visited = {[start_code] = true}
+        local head = 1
+        local found_path = nil
+
+        while head <= #queue do
+            local cur = queue[head]
+            head = head + 1
+            if cur.tx == target_tx and cur.ty == target_ty then
+                found_path = cur.path
+                break
+            end
+
+            for d, dir in ipairs(DIRS) do
+                local nbx, nby = cur.bx + dir[1], cur.by + dir[2]
+                if nbx >= 1 and nbx <= width and nby >= 1 and nby <= height then
+                    local bkey = nbx .. "," .. nby
+                    if not is_locked(nbx, nby) and not forbidden_extra[bkey] then
+                        local ntx, nty = cur.tx, cur.ty
+                        if nbx == cur.tx and nby == cur.ty then
+                            ntx, nty = cur.bx, cur.by
+                        end
+
+                        local code = encode(ntx, nty, nbx, nby)
+                        if not visited[code] then
+                            visited[code] = true
+                            local np = table.create(#cur.path + 1)
+                            for i, p in ipairs(cur.path) do np[i] = p end
+                            np[#cur.path + 1] = d
+                            table.insert(queue, {tx = ntx, ty = nty, bx = nbx, by = nby, path = np})
+                        end
+                    end
+                end
+            end
+        end
+
+        if not found_path then error("Gagal memindahkan tile " .. val) end
+        for _, d in ipairs(found_path) do do_move(d) end
+    end
+
+    local function move_blank_to(target_bx, target_by, forbidden_extra)
+        forbidden_extra = forbidden_extra or {}
+        if bx == target_bx and by == target_by then return end
+
+        local queue = {{bx = bx, by = by, path = {}}}
+        local visited = {[bx .. "," .. by] = true}
+        local head = 1
+        local found_path = nil
+
+        while head <= #queue do
+            local cur = queue[head]
+            head = head + 1
+            if cur.bx == target_bx and cur.by == target_by then
+                found_path = cur.path
+                break
+            end
+
+            for d, dir in ipairs(DIRS) do
+                local nbx, nby = cur.bx + dir[1], cur.by + dir[2]
+                local bkey = nbx .. "," .. nby
+                if nbx >= 1 and nbx <= width and nby >= 1 and nby <= height then
+                    if not is_locked(nbx, nby) and not forbidden_extra[bkey] and not visited[bkey] then
+                        visited[bkey] = true
+                        local np = table.create(#cur.path + 1)
+                        for i, p in ipairs(cur.path) do np[i] = p end
+                        np[#cur.path + 1] = d
+                        table.insert(queue, {bx = nbx, by = nby, path = np})
+                    end
+                end
+            end
+        end
+
+        if not found_path then error("Gagal memindahkan blank") end
+        for _, d in ipairs(found_path) do do_move(d) end
+    end
+
+    local function solve_simple_tile(tx, ty)
+        local val = get_target_val(tx, ty, height)
+        move_tile_to(val, tx, ty)
+        lock(tx, ty)
+    end
+
+    local function solve_row_last_two(r, min_c, max_c)
+        local t1_val = get_target_val(max_c - 1, r, height)
+        local t2_val = get_target_val(max_c, r, height)
+
+        local t1_x, t1_y = find_tile(t1_val)
+        local t2_x, t2_y = find_tile(t2_val)
+        if t1_x == max_c - 1 and t1_y == r and t2_x == max_c and t2_y == r then
+            lock(max_c - 1, r)
+            lock(max_c, r)
+            return
+        end
+
+        local park_y = math.min(height, r + 2)
+        move_tile_to(t2_val, max_c - 1, park_y)
+        move_tile_to(t1_val, max_c, r, {[ (max_c - 1) .. "," .. park_y ] = true})
+        move_tile_to(t2_val, max_c, r + 1, {[ max_c .. "," .. r ] = true})
+        move_blank_to(max_c - 1, r, {
+            [max_c .. "," .. r] = true,
+            [max_c .. "," .. (r + 1)] = true
+        })
+
+        do_move(4)
+        do_move(3)
+
+        lock(max_c - 1, r)
+        lock(max_c, r)
+    end
+
+    local function solve_col_last_two(c, min_r, max_r)
+        local t1_val = get_target_val(c, max_r - 1, height)
+        local t2_val = get_target_val(c, max_r, height)
+
+        local t1_x, t1_y = find_tile(t1_val)
+        local t2_x, t2_y = find_tile(t2_val)
+        if t1_x == c and t1_y == max_r - 1 and t2_x == c and t2_y == max_r then
+            lock(c, max_r - 1)
+            lock(c, max_r)
+            return
+        end
+
+        local park_x = math.min(width, c + 2)
+        move_tile_to(t2_val, park_x, max_r - 1)
+        move_tile_to(t1_val, c, max_r, {[ park_x .. "," .. (max_r - 1) ] = true})
+        move_tile_to(t2_val, c + 1, max_r, {[ c .. "," .. max_r ] = true})
+        move_blank_to(c, max_r - 1, {
+            [c .. "," .. max_r] = true,
+            [(c + 1) .. "," .. max_r] = true
+        })
+
+        do_move(3)
+        do_move(4)
+
+        lock(c, max_r - 1)
+        lock(c, max_r)
+    end
+
+    local function solve_3x3_astar(ox, oy)
+        if bx < ox or by < oy then move_blank_to(ox, oy) end
+
+        local goal = {}
+        local initial_state = {}
+        local blank_idx = 0
+        
+        for y = 1, 3 do
+            for x = 1, 3 do
+                local gx = ox + x - 1
+                local gy = oy + y - 1
+                local target_val = (gx - 1) * height + gy
+                goal[(y - 1) * 3 + x] = target_val
+                local cur_val = board[gy][gx]
+                initial_state[(y - 1) * 3 + x] = cur_val
+                if cur_val == blank_val then blank_idx = (y - 1) * 3 + x end
+            end
+        end
+
+        local function h_score(state)
+            local h = 0
+            for i = 1, 9 do
+                local v = state[i]
+                if v ~= blank_val then
+                    for gi = 1, 9 do
+                        if goal[gi] == v then
+                            local cx = (i - 1) % 3
+                            local cy = (i - 1) // 3
+                            local g_x = (gi - 1) % 3
+                            local g_y = (gi - 1) // 3
+                            h = h + math.abs(cx - g_x) + math.abs(cy - g_y)
+                            break
+                        end
+                    end
+                end
+            end
+            return h
+        end
+
+        local function state_to_key(state) return table.concat(state, ",") end
+        local target_key = state_to_key(goal)
+        if state_to_key(initial_state) == target_key then return end
+
+        local open_set = {{state = initial_state, b_idx = blank_idx, path = {}, g = 0, f = h_score(initial_state)}}
+        local visited = {[state_to_key(initial_state)] = 0}
+        local found_path = nil
+
+        while #open_set > 0 do
+            local min_i = 1
+            local min_f = open_set[1].f
+            for i = 2, #open_set do
+                if open_set[i].f < min_f then
+                    min_f = open_set[i].f
+                    min_i = i
+                end
+            end
+            local cur = table.remove(open_set, min_i)
+
+            if state_to_key(cur.state) == target_key then
+                found_path = cur.path
+                break
+            end
+
+            local cx = (cur.b_idx - 1) % 3 + 1
+            local cy = (cur.b_idx - 1) // 3 + 1
+
+            for d, dir in ipairs(DIRS) do
+                local nbx = cx + dir[1]
+                local nby = cy + dir[2]
+                if nbx >= 1 and nbx <= 3 and nby >= 1 and nby <= 3 then
+                    local n_bidx = (nby - 1) * 3 + nbx
+                    local nstate = table.create(9)
+                    for i = 1, 9 do nstate[i] = cur.state[i] end
+                    nstate[cur.b_idx] = nstate[n_bidx]
+                    nstate[n_bidx] = blank_val
+
+                    local key = state_to_key(nstate)
+                    local ng = cur.g + 1
+                    if not visited[key] or ng < visited[key] then
+                        visited[key] = ng
+                        local nf = ng + h_score(nstate)
+                        local npath = table.create(#cur.path + 1)
+                        for i, p in ipairs(cur.path) do npath[i] = p end
+                        npath[#cur.path + 1] = d
+                        table.insert(open_set, {state = nstate, b_idx = n_bidx, path = npath, g = ng, f = nf})
+                    end
+                end
+            end
+        end
+
+        if not found_path then error("3x3 A* gagal!") end
+        for _, d in ipairs(found_path) do do_move(d) end
+    end
+
+    -- Hitung langkah untuk baris & kolom 1 s/d 5
+    for k = 1, width - 3 do
+        if updatePhaseCallback then updatePhaseCallback("Menyusun Baris " .. k) end
+        for x = k, width - 2 do solve_simple_tile(x, k) end
+        solve_row_last_two(k, k, width)
+
+        if updatePhaseCallback then updatePhaseCallback("Menyusun Kolom " .. k) end
+        for y = k + 1, height - 2 do solve_simple_tile(k, y) end
+        solve_col_last_two(k, k + 1, height)
+    end
+
+    if updatePhaseCallback then updatePhaseCallback("Menyusun Subgrid 3x3 (A*)") end
+    solve_3x3_astar(width - 2, height - 2)
+    
+    return moves
+end
+
+-- =========================================================================
+-- 3. LOGIKA EKSEKUSI & INTERAKSI UI
+-- =========================================================================
+
+local function setStatus(text, color)
+    StatusBadge.Text = text
+    StatusBadge.BackgroundColor3 = color or Color3.fromRGB(45, 52, 68)
+end
+
+local function setProgressBar(percent)
+    percent = math.clamp(percent, 0, 1)
+    TweenService:Create(ProgressFill, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(percent, 0, 1, 0)
+    }):Play()
+end
+
+local function startSolving()
+    if isRunning then return end
+    isRunning = true
+    shouldStop = false
+
+    StartBtn.Text = "Hentikan (Stop)"
+    StartBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+    setStatus("CALCULATING", Color3.fromRGB(210, 140, 20))
+    PhaseLabel.Text = "Tahap: Menghitung Solusi..."
+    DetailLabel.Text = "Mengambil data puzzle dari server..."
+    setProgressBar(0)
+
+    task.spawn(function()
+        local spawner = workspace:FindFirstChild("FinalePuzzleSpawner")
+        local req = spawner and spawner:FindFirstChild("RequestPuzzle")
+        local moveRemote = spawner and spawner:FindFirstChild("MovePuzzle")
+
+        if not req or not moveRemote then
+            DetailLabel.Text = "Gagal: RemoteFunction tidak ditemukan."
+            setStatus("ERROR", Color3.fromRGB(200, 40, 40))
+            isRunning = false
+            StartBtn.Text = "Mulai Selesaikan"
+            StartBtn.BackgroundColor3 = Color3.fromRGB(0, 130, 255)
+            return
+        end
+
+        local g, w, h, seed, solved = req:InvokeServer()
+        if solved then
+            PhaseLabel.Text = "Tahap: Sudah Terselesaikan!"
+            DetailLabel.Text = "Puzzle sudah selesai di server."
+            setStatus("SOLVED", Color3.fromRGB(40, 180, 80))
+            setProgressBar(1)
+            isRunning = false
+            StartBtn.Text = "Mulai Selesaikan"
+            StartBtn.BackgroundColor3 = Color3.fromRGB(0, 130, 255)
+            return
+        end
+
+        local cur_board = {}
+        for y = 1, h do
+            cur_board[y] = {}
+            for x = 1, w do
+                cur_board[y][x] = g[x][y].i
+            end
+        end
+
+        -- Hitung langkah
+        local ok, moves = pcall(function()
+            return solve_puzzle(cur_board, w, h, function(phaseName)
+                PhaseLabel.Text = "Tahap: " .. phaseName
+            end)
+        end)
+
+        if not ok or not moves then
+            DetailLabel.Text = "Gagal menghitung langkah solusi."
+            setStatus("ERROR", Color3.fromRGB(200, 40, 40))
+            isRunning = false
+            StartBtn.Text = "Mulai Selesaikan"
+            StartBtn.BackgroundColor3 = Color3.fromRGB(0, 130, 255)
+            return
+        end
+
+        local totalMoves = #moves
+        setStatus("RUNNING", Color3.fromRGB(0, 150, 255))
+        DetailLabel.Text = "Mengirim gerakan ke server..."
+
+        local startTime = os.time()
+        local timeConn
+        timeConn = task.spawn(function()
+            while isRunning do
+                local elapsed = os.time() - startTime
+                local mins = math.floor(elapsed / 60)
+                local secs = elapsed % 60
+                TimeLabel.Text = string.format("Waktu: %02d:%02d", mins, secs)
+                task.wait(1)
+            end
+        end)
+
+        local is_solved = false
+        local retries = 0
+
+        for i, m in ipairs(moves) do
+            if shouldStop then
+                DetailLabel.Text = "Dibatalkan oleh pengguna."
+                setStatus("STOPPED", Color3.fromRGB(150, 150, 150))
+                break
+            end
+
+            local d, old_x, old_y = m[1], m[2], m[3]
+
+            -- Loop kirim gerakan dengan retry otomatis
+            while not shouldStop do
+                local success, res = moveRemote:InvokeServer(d, old_x, old_y)
+                if success then
+                    if res == true then is_solved = true end
+                    break
+                else
+                    retries = retries + 1
+                    task.wait(0.06)
+                end
+            end
+
+            -- Update UI
+            local pct = i / totalMoves
+            setProgressBar(pct)
+            MovesLabel.Text = string.format("Langkah: %d / %d (%.1f%%)", i, totalMoves, pct * 100)
+            DetailLabel.Text = string.format("Proses bergerak... (Retries: %d)", retries)
+
+            if is_solved then
+                setProgressBar(1)
+                MovesLabel.Text = string.format("Langkah: %d / %d (100%%)", totalMoves, totalMoves)
+                PhaseLabel.Text = "Tahap: Selesai!"
+                DetailLabel.Text = "Selamat! Puzzle berhasil dipecahkan."
+                setStatus("SOLVED", Color3.fromRGB(40, 200, 90))
+                break
+            end
+
+            task.wait(0.05)
+        end
+
+        isRunning = false
+        StartBtn.Text = "Mulai Selesaikan"
+        StartBtn.BackgroundColor3 = Color3.fromRGB(0, 130, 255)
+        req:InvokeServer()
+    end)
+end
+
+local function stopSolving()
+    if not isRunning then return end
+    shouldStop = true
+    DetailLabel.Text = "Menghentikan..."
+end
+
+-- Hubungkan Event Tombol
+StartBtn.MouseButton1Click:Connect(function()
+    if isRunning then
+        stopSolving()
+    else
+        startSolving()
+    end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    stopSolving()
+    ScreenGui:Destroy()
+end)
+
+print("[PuzzleSolver] UI Berhasil dimuat ke layar!")
